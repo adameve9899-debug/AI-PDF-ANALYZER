@@ -6,13 +6,15 @@ import io
 import json
 import time
 
+# --- Page Configuration ---
 st.set_page_config(page_title="PDF to Excel AI Analyzer", layout="centered")
 st.title("📄 Universal AI PDF Analyzer")
 st.markdown("Powered by OpenRouter / Universal APIs")
 
-# --- Updated to ask for an OpenRouter Key ---
+# --- API Key Input ---
 api_key = st.text_input("Enter your OpenRouter API Key:", type="password")
 
+# --- User Inputs ---
 uploaded_files = st.file_uploader("Upload PDFs (Batch process as many as you need)", type="pdf", accept_multiple_files=True)
 
 format_options = {
@@ -29,9 +31,9 @@ if chosen_format == "Custom":
 else:
     ai_instruction = format_options[chosen_format]
 
-# --- THE MAGIC HAPPENS HERE ---
+# --- Processing Function ---
 def analyze_pdf(text, instruction, api_key):
-    # We use the OpenAI library, but point it to OpenRouter!
+    # We use the OpenAI library, but point it to OpenRouter
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
@@ -44,9 +46,9 @@ def analyze_pdf(text, instruction, api_key):
     """
     
     try:
-        # We are using Nvidia's incredibly powerful free model hosted on OpenRouter
+        # Fixed: Using a highly reliable, stable free model currently active on OpenRouter
         response = client.chat.completions.create(
-            model="nvidia/nemotron-3-super:free", 
+            model="meta-llama/llama-3.3-70b-instruct:free", 
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1
         )
@@ -55,7 +57,7 @@ def analyze_pdf(text, instruction, api_key):
     except Exception as e:
         return {"Error": f"Failed to parse data. {str(e)}"}
 
-# --- The rest of the logic stays the same! ---
+# --- Execution ---
 if st.button("Analyze PDFs & Generate Excel"):
     if not api_key or not uploaded_files:
         st.error("Please enter your API key and upload PDFs.")
@@ -65,21 +67,26 @@ if st.button("Analyze PDFs & Generate Excel"):
             progress_bar = st.progress(0)
             
             for i, file in enumerate(uploaded_files):
+                # 1. Extract Text
                 reader = PyPDF2.PdfReader(file)
                 text = "".join([page.extract_text() + "\n" for page in reader.pages if page.extract_text()])
                 
-                # Pass the API key to our new function
+                # 2. Analyze with AI
                 data = analyze_pdf(text, ai_instruction, api_key)
                 data["Source File"] = file.name
                 all_data.append(data)
                 
+                # Update progress bar
                 progress_bar.progress((i + 1) / len(uploaded_files))
                 
-                # Small pause to respect OpenRouter's 20 requests/minute free limit
+                # Small pause to respect OpenRouter's free rate limits
                 if len(uploaded_files) > 1:
                     time.sleep(3) 
             
+            # 3. Create Excel File
             df = pd.DataFrame(all_data)
+            
+            # Reorder columns so the file name is always first
             cols = ['Source File'] + [col for col in df.columns if col != 'Source File']
             df = df[cols]
             
@@ -89,4 +96,11 @@ if st.button("Analyze PDFs & Generate Excel"):
             
             st.success("Analysis Complete!")
             st.dataframe(df)
-            st.download_button("📥 Download Excel Report", output.getvalue(), "AI_Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
+            # 4. Download Button
+            st.download_button(
+                label="📥 Download Excel Report",
+                data=output.getvalue(),
+                file_name="AI_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
